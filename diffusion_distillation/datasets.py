@@ -325,7 +325,7 @@ class LSUN(Dataset):
 class MNIST(Dataset):
     """MNIST dataset."""
     
-    def __init__(self, *, image_size, randflip, extra_image_sizes=()):
+    def __init__(self, *, class_conditional, randflip):
         """MNIST dataset.
         
         Args:
@@ -334,12 +334,10 @@ class MNIST(Dataset):
           extra_image_sizes: Tuple[int]: also provide image at these resolutions.
         """
         self._class_conditional = class_conditional
-        self._image_size = image_size
         self._randflip = randflip
-        self._extra_image_sizes = extra_image_sizes
         
         self._info = {
-            'data_shape': (self._image_size, self._image_size, 1),  # MNIST images are grayscale
+            'data_shape': (28, 28, 1),  # MNIST images are grayscale
             'num_train': 60000,  # MNIST has 60,000 training images
             'num_eval': 10000,   # MNIST has 10,000 evaluation images
             'num_classes': 10 if self._class_conditional else 1
@@ -359,30 +357,14 @@ class MNIST(Dataset):
             decoders={'image': tfds.decode.SkipDecoding()})
     
     def _preprocess(self, x, *, split, augment):
-        del split  # unused
-        out = {}
-        
-        # Decode the image, resize, and convert to float
+        del split
         img = tf.cast(x['image'], tf.float32)
-        
-        # Optionally apply random flip
-        if augment and self._randflip:
-            img = tf.image.random_flip_left_right(img)
-        
-        # Resize image to the desired size
-        out['image'] = tf.clip_by_value(
-            tf.image.resize(img, [self._image_size, self._image_size], method='area'),
-            0, 255)
-        
-        # Optionally provide the image at other resolutions too
-        for s in self._extra_image_sizes:
-            assert isinstance(s, int)
-            out[f'extra_image_{s}'] = tf.clip_by_value(
-                tf.image.resize(img, [s, s], method='area'), 0, 255)
-        
-        
-        # Class label
+        if augment:  # NOTE: this makes training nondeterministic
+            if self._randflip:
+                aug_img = tf.image.flip_left_right(img)
+                aug = tf.random.uniform(shape=[]) > 0.5
+                img = tf.where(aug, aug_img, img)
+        out = {'image': img}
         if self._class_conditional:
             out['label'] = tf.cast(x['label'], tf.int32)
-        
         return out
