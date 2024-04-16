@@ -20,5 +20,7 @@ from . import church128_base
 from . import church128_distill
 from . import cifar_base
 from . import cifar_distill
+from . import mnist_base
+from . import mnist_distill
 from . import imagenet64_base
 from . import imagenet64_distill
