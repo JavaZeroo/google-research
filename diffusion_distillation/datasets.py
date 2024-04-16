@@ -333,6 +333,7 @@ class MNIST(Dataset):
           randflip: bool: random flip augmentation.
           extra_image_sizes: Tuple[int]: also provide image at these resolutions.
         """
+        self._class_conditional = class_conditional
         self._image_size = image_size
         self._randflip = randflip
         self._extra_image_sizes = extra_image_sizes
@@ -341,7 +342,7 @@ class MNIST(Dataset):
             'data_shape': (self._image_size, self._image_size, 1),  # MNIST images are grayscale
             'num_train': 60000,  # MNIST has 60,000 training images
             'num_eval': 10000,   # MNIST has 10,000 evaluation images
-            'num_classes': 10    # MNIST has 10 digit classes (0 to 9)
+            'num_classes': 10 if self._class_conditional else 1
         }
     
     @property
@@ -379,7 +380,9 @@ class MNIST(Dataset):
             out[f'extra_image_{s}'] = tf.clip_by_value(
                 tf.image.resize(img, [s, s], method='area'), 0, 255)
         
+        
         # Class label
-        out['label'] = tf.cast(x['label'], tf.int32)
+        if self._class_conditional:
+            out['label'] = tf.cast(x['label'], tf.int32)
         
         return out
