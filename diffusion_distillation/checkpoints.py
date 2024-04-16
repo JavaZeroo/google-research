@@ -27,9 +27,9 @@ import shutil
 import logging
 import re
 import time
+import glob
 from absl import logging
 from flax import serialization
-from tensorflow.compat.v2.io import gfile
 import pickle
 
 # Single-group reg-exps for int or float numerical substrings.
@@ -123,66 +123,26 @@ def save_checkpoint(ckpt_dir, target, step, prefix='checkpoint_', keep=1, overwr
 
 def latest_checkpoint_path(ckpt_dir, prefix):
   glob_path = os.path.join(ckpt_dir, f'{prefix}*')
-  checkpoint_files = natural_sort(gfile.glob(glob_path))
+  checkpoint_files = natural_sort(glob.glob(glob_path))
   ckpt_tmp_path = _checkpoint_path(ckpt_dir, 'tmp', prefix)
   checkpoint_files = [f for f in checkpoint_files if f != ckpt_tmp_path]
   return checkpoint_files[-1] if checkpoint_files else None
 
 
-def check_and_convert_gcs_filepath(filepath, raise_if_not_gcs=False):
-  """Utility for loading model checkpoints from GCS."""
-  if filepath[:5] == 'gs://':
-    local_filepath = '/temp/download/' + filepath[5:]
-    if os.path.exists(local_filepath):
-      print('loading from local copy of GCS file: ' + local_filepath)
-    else:
-      print('downloading file from GCS: ' + filepath)
-      dir_index = local_filepath.rfind('/')
-      os.system('mkdir -p ' + local_filepath[:dir_index])
-      os.system('gsutil cp ' + filepath + ' ' + local_filepath)
-    return local_filepath
-
-  else:
-    if raise_if_not_gcs:
-      raise ValueError('input not recognized as a GCS path')
-    return filepath
-
-
 def restore_from_path(ckpt_path, target):
-  ckpt_path = check_and_convert_gcs_filepath(ckpt_path)
-  logging.info('Restoring checkpoint from %s', ckpt_path)
-  with gfile.GFile(ckpt_path, 'rb') as fp:
-    return serialization.from_bytes(target, fp.read())
-
+    logging.info('Restoring checkpoint from %s', ckpt_path)
+    with open(ckpt_path, 'rb') as fp:
+        return pickle.load(fp)
 
 def restore_checkpoint(ckpt_dir, target, step=None, prefix='checkpoint_'):
-  """Restore last/best checkpoint from checkpoints in path.
-
-  Sorts the checkpoint files naturally, returning the highest-valued
-  file, e.g.:
-    ckpt_1, ckpt_2, ckpt_3 --> ckpt_3
-    ckpt_0.01, ckpt_0.1, ckpt_0.001 --> ckpt_0.1
-    ckpt_-1.0, ckpt_1.0, ckpt_1e5 --> ckpt_1e5
-
-  Args:
-    ckpt_dir: str: directory of checkpoints to restore from.
-    target: matching object to rebuild via deserialized state-dict.
-    step: int: step number to load or None to load latest.
-    prefix: str: name prefix of checkpoint files.
-
-  Returns:
-    Restored `target` updated from checkpoint file, or if no step specified and
-    no checkpoint files present, returns the passed-in `target` unchanged.
-  """
   if step:
     ckpt_path = _checkpoint_path(ckpt_dir, step, prefix)
-    if not gfile.exists(ckpt_path):
+    if not os.path.exists(ckpt_path):
       raise ValueError(f'Matching checkpoint not found: {ckpt_path}')
   else:
     ckpt_path = latest_checkpoint_path(ckpt_dir, prefix)
     if ckpt_path is None:
       return target
-
   return restore_from_path(ckpt_path, target)
 
 

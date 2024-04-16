@@ -321,3 +321,65 @@ class LSUN(Dataset):
           tf.image.resize(img, [s, s], antialias=True), 0, 255)
 
     return out
+
+class MNIST(Dataset):
+    """MNIST dataset."""
+    
+    def __init__(self, *, image_size, randflip, extra_image_sizes=()):
+        """MNIST dataset.
+        
+        Args:
+          image_size: int: size of image to model, typically 28 for MNIST.
+          randflip: bool: random flip augmentation.
+          extra_image_sizes: Tuple[int]: also provide image at these resolutions.
+        """
+        self._image_size = image_size
+        self._randflip = randflip
+        self._extra_image_sizes = extra_image_sizes
+        
+        self._info = {
+            'data_shape': (self._image_size, self._image_size, 1),  # MNIST images are grayscale
+            'num_train': 60000,  # MNIST has 60,000 training images
+            'num_eval': 10000,   # MNIST has 10,000 evaluation images
+            'num_classes': 10    # MNIST has 10 digit classes (0 to 9)
+        }
+    
+    @property
+    def info(self):
+        return self._info
+    
+    def _load_tfds(self, *, split, shuffle_seed):
+        return tfds.load(
+            'mnist',
+            split={'train': 'train', 'eval': 'test'}[split],
+            shuffle_files=shuffle_seed is not None,
+            read_config=None if shuffle_seed is None else tfds.ReadConfig(
+                shuffle_seed=shuffle_seed),
+            decoders={'image': tfds.decode.SkipDecoding()})
+    
+    def _preprocess(self, x, *, split, augment):
+        del split  # unused
+        out = {}
+        
+        # Decode the image, resize, and convert to float
+        img = tf.cast(x['image'], tf.float32)
+        
+        # Optionally apply random flip
+        if augment and self._randflip:
+            img = tf.image.random_flip_left_right(img)
+        
+        # Resize image to the desired size
+        out['image'] = tf.clip_by_value(
+            tf.image.resize(img, [self._image_size, self._image_size], method='area'),
+            0, 255)
+        
+        # Optionally provide the image at other resolutions too
+        for s in self._extra_image_sizes:
+            assert isinstance(s, int)
+            out[f'extra_image_{s}'] = tf.clip_by_value(
+                tf.image.resize(img, [s, s], method='area'), 0, 255)
+        
+        # Class label
+        out['label'] = tf.cast(x['label'], tf.int32)
+        
+        return out
